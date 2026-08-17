@@ -413,6 +413,53 @@ def call_stats(from_date: str = "", to_date: str = "") -> dict:
 
 
 @mcp.tool()
+def b24_call(method: str, params: dict | None = None) -> Any:
+    """Вызвать ЛЮБОЙ метод REST API Bitrix24 — полный охват API портала.
+
+    Примеры: method="crm.lead.list", params={"filter": {">DATE_CREATE": "2026-08-01"}, "select": ["ID", "TITLE"]};
+    method="disk.folder.getchildren", params={"id": 123}; method="methods" — список доступных методов.
+    Доступно всё в рамках прав вебхука: task, crm, im, disk, calendar, sonet_group,
+    telephony, user, department, log. Документация: apidocs.bitrix24.com.
+    ВАЖНО: перед вызовом изменяющих методов (add/update/delete/set) показывай
+    пользователю, что именно будет сделано.
+    """
+    return b24(method, params or {})
+
+
+@mcp.tool()
+def b24_list_all(
+    method: str,
+    filter: dict | None = None,
+    select: list | None = None,
+    order: dict | None = None,
+    limit: int = 200,
+) -> list:
+    """Выгрузить записи любого списочного метода с автопагинацией.
+
+    Работает с crm.deal.list, crm.lead.list, crm.contact.list, user.get,
+    tasks.task.list и другими *.list-методами. limit — максимум записей (потолок 2000).
+    """
+    limit = min(limit, 2000)
+    params: dict[str, Any] = {}
+    if filter:
+        params["filter"] = filter
+    if select:
+        params["select"] = select
+    if order:
+        params["order"] = order
+    rows: list = []
+    start = 0
+    while len(rows) < limit:
+        res = b24(method, {**params, "start": start})
+        batch = res if isinstance(res, list) else next((v for v in res.values() if isinstance(v, list)), [])
+        rows.extend(batch)
+        if len(batch) < 50:
+            break
+        start += 50
+    return rows[:limit]
+
+
+@mcp.tool()
 def departments() -> list[dict]:
     """Структура компании: отделы, иерархия, руководители."""
     deps = b24("department.get") or []
